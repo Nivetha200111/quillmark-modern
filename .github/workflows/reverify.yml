@@ -8,6 +8,12 @@ on:
 permissions:
   contents: read
 
+env:
+  # The only legacy repository a certificate may name, and the only Diocle branch a verifier commit may come from.
+  LEGACY_REPO: https://github.com/Nivetha200111/quillmark-legacy
+  DIOCLE_REPO: https://github.com/Nivetha200111/Diocle
+  DIOCLE_BRANCH: main
+
 jobs:
   reverify:
     runs-on: ubuntu-24.04
@@ -51,14 +57,17 @@ jobs:
           certs=(programs/*/certificate.json)
           if [ ${#certs[@]} -eq 0 ]; then echo "No certificates to verify."; echo "NONE=1" >> "$GITHUB_ENV"; exit 0; fi
           commit=$(python -c "import json,sys; c={json.load(open(p))['verification']['verifier']['commit'] for p in sys.argv[1:]}; assert len(c)==1, c; print(c.pop())" "${certs[@]}")
-          git init -q diocle
-          git -C diocle fetch -q --depth 1 https://github.com/Nivetha200111/Diocle.git "$commit"
-          git -C diocle checkout -q FETCH_HEAD
-          pip install -q -e diocle/services/verifier
+          [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || { echo "verifier commit is not a full SHA: $commit"; exit 1; }
+          git clone -q --filter=blob:none --branch "$DIOCLE_BRANCH" -- "$DIOCLE_REPO" diocle
+          git -C diocle merge-base --is-ancestor "$commit" "origin/$DIOCLE_BRANCH" \
+            || { echo "verifier commit $commit is not on $DIOCLE_REPO $DIOCLE_BRANCH"; exit 1; }
+          git -C diocle checkout -q "$commit"
+          pip install -q -e diocle/services/analyzer -e diocle/services/verifier
           cobc --version | head -1
 
       - name: Re-verify every program on fresh inputs
         if: env.NONE != '1'
         run: |
           seed=$(( ${{ github.run_id }} % 1000000 + 10000 ))
-          python -m diocle_verifier.reverify programs --seed "$seed" --random 1000 --summary "$GITHUB_STEP_SUMMARY"
+          python -m diocle_verifier.reverify programs --seed "$seed" --random 1000 \
+            --expect-legacy "$LEGACY_REPO" --summary "$GITHUB_STEP_SUMMARY"
