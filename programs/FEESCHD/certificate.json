@@ -1,0 +1,42 @@
+{
+  "version": "0.1",
+  "program": "FEESCHD",
+  "legacy": {
+    "repository": "https://github.com/Nivetha200111/quillmark-legacy",
+    "commit": "00621397eb309b606e790241680280a42d52fa12",
+    "path": "cobol/FEESCHD.cbl",
+    "copybooks": [
+      "copybooks/FEEREC.cpy",
+      "copybooks/CHGREC.cpy"
+    ],
+    "job": "jcl/FEESCHD.jcl"
+  },
+  "java": {
+    "mainClass": "Feeschd",
+    "files": [
+      "Feeschd.java"
+    ]
+  },
+  "verification": {
+    "passed": 1021,
+    "total": 1021,
+    "stdoutMatch": true,
+    "seed": 4243,
+    "verifier": {
+      "repository": "https://github.com/Nivetha200111/Diocle",
+      "commit": "e54cf2644b6035299ba8c46146e33d2037d9a468",
+      "gnucobol": "cobc (GnuCOBOL) 3.2.0"
+    }
+  },
+  "agent": {
+    "runId": "feeschd-20261028-173051",
+    "model": "muse-spark-1.3-contributor",
+    "mode": "translate",
+    "rounds": 1,
+    "modelCalls": 5,
+    "totalTokens": 51650,
+    "estimatedCostUsd": 0.006015,
+    "memoryLessonsUsed": 7
+  },
+  "issuedAt": "2026-10-28T12:17:11+00:00"
+}
