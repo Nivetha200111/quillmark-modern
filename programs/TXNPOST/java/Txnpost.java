@@ -1,45 +1,43 @@
 import java.io.BufferedReader;
-import java.io.BufferedWriter;
+import java.io.BufferedOutputStream;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.InputStreamReader;
 import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Paths;
-import java.nio.file.StandardOpenOption;
-import java.util.Locale;
 
 public class Txnpost {
-    private static final BigDecimal SURCHARGE_RATE = new BigDecimal("0.0125");
-    private static final BigDecimal SURCHARGE_CAP = new BigDecimal("15.00");
-    private static final BigDecimal ZERO_2 = new BigDecimal("0.00");
-    private static final BigDecimal TWELVE = new BigDecimal("12");
-
     private BufferedReader txnReader;
-    private BufferedWriter postWriter;
+    private BufferedOutputStream postOut;
+    private String wsTxnStatus = "00";
+    private String wsPostStatus = "00";
     private boolean endOfTxns = false;
-
-    private String txnId = "         ";
-    private char txnType = ' ';
-    private BigDecimal txnAmount = ZERO_2;
-    private BigDecimal txnBalance = ZERO_2;
-    private int txnOdLimit = 0;
-
-    private String postStatus = "  ";
-
-    private BigDecimal wsCharge = ZERO_2;
-    private BigDecimal wsCredit = ZERO_2;
-    private BigDecimal wsNewBal = ZERO_2;
-    private BigDecimal wsFloor = ZERO_2;
-
+    private final BigDecimal wsSurchargeRate = new BigDecimal("0.0125");
+    private final BigDecimal wsSurchargeCap = new BigDecimal("15.00");
+    private BigDecimal wsCharge = new BigDecimal("0.00");
+    private BigDecimal wsCredit = new BigDecimal("0.00");
+    private BigDecimal wsNewBal = new BigDecimal("0.00");
+    private BigDecimal wsFloor = new BigDecimal("0.00");
     private int wsPostedCnt = 0;
     private int wsRejectCnt = 0;
+    private String txnId = "         ";
+    private char txnType = ' ';
+    private BigDecimal txnAmount = new BigDecimal("0.00");
+    private BigDecimal txnBalance = new BigDecimal("0.00");
+    private int txnOdLimit = 0;
+    private String postTxnId = "         ";
+    private BigDecimal postChargeVal = new BigDecimal("0.00");
+    private BigDecimal postNewBalVal = new BigDecimal("0.00");
+    private String postStatus = "  ";
 
     public static void main(String[] args) throws Exception {
         Txnpost p = new Txnpost();
         p.p0000Main();
     }
 
-    private void p0000Main() {
+    private void p0000Main() throws Exception {
         p1000Init();
         while (!endOfTxns) {
             p2000Process();
@@ -47,63 +45,63 @@ public class Txnpost {
         p9000Term();
     }
 
-    private void p1000Init() {
+    private void p1000Init() throws Exception {
         String inPath = System.getenv("DD_TXNIN");
         String outPath = System.getenv("DD_POSTOUT");
-        try {
-            if (inPath == null || inPath.isEmpty()) {
-                throw new java.io.IOException("missing DD_TXNIN");
-            }
-            txnReader = Files.newBufferedReader(Paths.get(inPath), StandardCharsets.ISO_8859_1);
-        } catch (Exception e) {
-            System.out.print("TXNPOST OPEN TXNIN FAILED 35\n");
+        if (inPath == null || inPath.isEmpty()) {
+            wsTxnStatus = "35";
+            System.out.println("TXNPOST OPEN TXNIN FAILED " + wsTxnStatus);
             System.exit(16);
             return;
         }
         try {
-            if (outPath == null || outPath.isEmpty()) {
-                throw new java.io.IOException("missing DD_POSTOUT");
-            }
-            postWriter = Files.newBufferedWriter(Paths.get(outPath), StandardCharsets.ISO_8859_1,
-                    StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
+            txnReader = new BufferedReader(new InputStreamReader(new FileInputStream(inPath), StandardCharsets.ISO_8859_1));
+            wsTxnStatus = "00";
         } catch (Exception e) {
-            try {
-                if (txnReader != null) {
-                    txnReader.close();
-                }
-            } catch (Exception ex) {
-            }
-            System.out.print("TXNPOST OPEN POSTOUT FAILED 35\n");
+            wsTxnStatus = "35";
+            System.out.println("TXNPOST OPEN TXNIN FAILED " + wsTxnStatus);
+            System.exit(16);
+            return;
+        }
+        if (outPath == null || outPath.isEmpty()) {
+            wsPostStatus = "30";
+            System.out.println("TXNPOST OPEN POSTOUT FAILED " + wsPostStatus);
+            System.exit(16);
+            return;
+        }
+        try {
+            postOut = new BufferedOutputStream(new FileOutputStream(outPath));
+            wsPostStatus = "00";
+        } catch (Exception e) {
+            wsPostStatus = "30";
+            System.out.println("TXNPOST OPEN POSTOUT FAILED " + wsPostStatus);
             System.exit(16);
             return;
         }
         p8000Read();
     }
 
-    private void p2000Process() {
-        wsCharge = ZERO_2;
-        wsNewBal = txnBalance;
+    private void p2000Process() throws Exception {
+        wsCharge = new BigDecimal("0.00");
+        wsNewBal = storeTrunc(txnBalance, 9, 2);
         if (txnType == 'P') {
             p3000PostPayment();
         } else if (txnType == 'F') {
-            BigDecimal r = txnBalance.subtract(txnAmount);
-            r = r.setScale(2, RoundingMode.UNNECESSARY);
-            wsNewBal = fit(r, 9);
+            BigDecimal v = txnBalance.subtract(txnAmount);
+            wsNewBal = storeTrunc(v, 9, 2);
             postStatus = "FE";
         } else if (txnType == 'I') {
-            BigDecimal c = txnAmount.divide(TWELVE, 2, RoundingMode.HALF_UP);
-            wsCredit = fit(c, 7);
-            BigDecimal r = txnBalance.add(wsCredit);
-            r = r.setScale(2, RoundingMode.UNNECESSARY);
-            wsNewBal = fit(r, 9);
+            wsCredit = divideRounded(txnAmount, BigDecimal.valueOf(12), 7, 2);
+            BigDecimal v = txnBalance.add(wsCredit);
+            wsNewBal = storeTrunc(v, 9, 2);
             postStatus = "IC";
         } else {
             postStatus = "RJ";
         }
         if (postStatus.equals("RJ") || postStatus.equals("NS")) {
-            wsRejectCnt = wsRejectCnt + 1;
+            wsRejectCnt = (wsRejectCnt + 1) % 10000000;
         } else {
-            wsPostedCnt = wsPostedCnt + 1;
+            wsPostedCnt = (wsPostedCnt + 1) % 10000000;
         }
         p5000WriteResult();
         p8000Read();
@@ -113,21 +111,19 @@ public class Txnpost {
         if (txnAmount.compareTo(BigDecimal.ZERO) <= 0) {
             postStatus = "RJ";
         } else {
-            BigDecimal prod = txnAmount.multiply(SURCHARGE_RATE);
-            BigDecimal trunc = prod.setScale(2, RoundingMode.DOWN);
-            wsCharge = fit(trunc, 3);
-            if (wsCharge.compareTo(SURCHARGE_CAP) > 0) {
-                wsCharge = SURCHARGE_CAP;
+            BigDecimal prod = txnAmount.multiply(wsSurchargeRate);
+            wsCharge = storeTrunc(prod, 3, 2);
+            if (wsCharge.compareTo(wsSurchargeCap) > 0) {
+                wsCharge = new BigDecimal("15.00");
             }
-            BigDecimal r = txnBalance.subtract(txnAmount).subtract(wsCharge);
-            r = r.setScale(2, RoundingMode.UNNECESSARY);
-            wsNewBal = fit(r, 9);
+            BigDecimal v = txnBalance.subtract(txnAmount).subtract(wsCharge);
+            wsNewBal = storeTrunc(v, 9, 2);
             BigDecimal od = BigDecimal.valueOf((long) txnOdLimit).setScale(2);
-            BigDecimal f = ZERO_2.subtract(od);
-            wsFloor = fit(f, 9);
+            BigDecimal f = BigDecimal.ZERO.subtract(od);
+            wsFloor = storeTrunc(f, 9, 2);
             if (wsNewBal.compareTo(wsFloor) < 0) {
-                wsNewBal = txnBalance;
-                wsCharge = ZERO_2;
+                wsNewBal = storeTrunc(txnBalance, 9, 2);
+                wsCharge = new BigDecimal("0.00");
                 postStatus = "NS";
             } else {
                 postStatus = "OK";
@@ -135,44 +131,46 @@ public class Txnpost {
         }
     }
 
-    private void p5000WriteResult() {
-        String chargeStr = formatSigned(wsCharge, 3);
-        String newBalStr = formatSigned(wsNewBal, 9);
-        String line = txnId + chargeStr + newBalStr + postStatus;
-        try {
-            postWriter.write(line);
-            postWriter.write("\n");
-        } catch (Exception e) {
+    private void p5000WriteResult() throws Exception {
+        postTxnId = txnId;
+        postChargeVal = storeTrunc(wsCharge, 3, 2);
+        postNewBalVal = storeTrunc(wsNewBal, 9, 2);
+        String id = postTxnId;
+        if (id.length() < 9) {
+            id = id + " ".repeat(9 - id.length());
+        } else if (id.length() > 9) {
+            id = id.substring(0, 9);
         }
+        String chargeStr = formatSignedSeparate(postChargeVal, 3, 2);
+        String balStr = formatSignedSeparate(postNewBalVal, 9, 2);
+        String rec = id + chargeStr + balStr + postStatus;
+        byte[] b = rec.getBytes(StandardCharsets.ISO_8859_1);
+        postOut.write(b);
+        postOut.write('\n');
     }
 
-    private void p8000Read() {
-        try {
-            String line = txnReader.readLine();
-            if (line == null) {
-                endOfTxns = true;
-            } else {
-                if (line.length() < 37) {
-                    StringBuilder sb = new StringBuilder(line);
-                    while (sb.length() < 37) {
-                        sb.append(' ');
-                    }
-                    line = sb.toString();
-                } else if (line.length() > 37) {
-                    line = line.substring(0, 37);
-                }
-                txnId = line.substring(0, 9);
-                txnType = line.charAt(9);
-                txnAmount = parseSigned(line.substring(10, 20), 7, 2);
-                txnBalance = parseSigned(line.substring(20, 32), 9, 2);
-                txnOdLimit = parseUnsigned(line.substring(32, 37));
-            }
-        } catch (Exception e) {
+    private void p8000Read() throws Exception {
+        String line = txnReader.readLine();
+        if (line == null) {
             endOfTxns = true;
+            return;
         }
+        if (line.length() < 37) {
+            line = line + " ".repeat(37 - line.length());
+        } else if (line.length() > 37) {
+            line = line.substring(0, 37);
+        }
+        txnId = line.substring(0, 9);
+        txnType = line.charAt(9);
+        String amountStr = line.substring(10, 20);
+        String balanceStr = line.substring(20, 32);
+        String odStr = line.substring(32, 37);
+        txnAmount = parseSignedSeparate(amountStr, 2);
+        txnBalance = parseSignedSeparate(balanceStr, 2);
+        txnOdLimit = parseUnsigned(odStr);
     }
 
-    private void p9000Term() {
+    private void p9000Term() throws Exception {
         try {
             if (txnReader != null) {
                 txnReader.close();
@@ -180,77 +178,115 @@ public class Txnpost {
         } catch (Exception e) {
         }
         try {
-            if (postWriter != null) {
-                postWriter.close();
+            if (postOut != null) {
+                postOut.flush();
+                postOut.close();
             }
         } catch (Exception e) {
         }
-        String out = "TXNPOST POSTED=" + String.format(Locale.US, "%010d", wsPostedCnt)
-                + " REJECTED=" + String.format(Locale.US, "%010d", wsRejectCnt);
-        System.out.print(out + "\n");
+        String posted = String.format("%07d", wsPostedCnt);
+        String rejected = String.format("%07d", wsRejectCnt);
+        System.out.println("TXNPOST POSTED=" + posted + " REJECTED=" + rejected);
     }
 
-    private static BigDecimal fit(BigDecimal v, int intDigits) {
-        BigDecimal mod = BigDecimal.TEN.pow(intDigits);
-        if (v.abs().compareTo(mod) < 0) {
-            return v.setScale(2, RoundingMode.UNNECESSARY);
+    private static BigDecimal storeTrunc(BigDecimal v, int intDigits, int fracDigits) {
+        BigDecimal s = v.setScale(fracDigits, RoundingMode.DOWN);
+        BigDecimal m = BigDecimal.TEN.pow(intDigits);
+        BigDecimal r = s.remainder(m);
+        return r.setScale(fracDigits, RoundingMode.UNNECESSARY);
+    }
+
+    private static BigDecimal divideRounded(BigDecimal num, BigDecimal den, int intDigits, int fracDigits) {
+        BigDecimal q = num.divide(den, fracDigits, RoundingMode.HALF_UP);
+        BigDecimal m = BigDecimal.TEN.pow(intDigits);
+        BigDecimal r = q.remainder(m);
+        return r.setScale(fracDigits, RoundingMode.UNNECESSARY);
+    }
+
+    private static BigDecimal parseSignedSeparate(String field, int fracDigits) {
+        if (field.isEmpty()) {
+            return BigDecimal.ZERO.setScale(fracDigits);
         }
-        BigDecimal r = v.remainder(mod);
-        return r.setScale(2, RoundingMode.UNNECESSARY);
-    }
-
-    private static BigDecimal parseSigned(String field, int intDigits, int decDigits) {
-        char s = field.charAt(0);
-        String digits = field.substring(1);
-        StringBuilder sb = new StringBuilder(digits.length());
-        for (int i = 0; i < digits.length(); i++) {
-            char c = digits.charAt(i);
-            if (c >= '0' && c <= '9') {
-                sb.append(c);
-            } else {
+        char c0 = field.charAt(0);
+        if (c0 == '+' || c0 == '-') {
+            String digits = field.substring(1);
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < digits.length(); i++) {
+                char c = digits.charAt(i);
+                if (c >= '0' && c <= '9') {
+                    sb.append(c);
+                } else if (c == ' ') {
+                    sb.append('0');
+                } else {
+                    sb.append('0');
+                }
+            }
+            if (sb.length() == 0) {
                 sb.append('0');
             }
+            BigDecimal unscaled = new BigDecimal(sb.toString());
+            BigDecimal v = unscaled.movePointLeft(fracDigits);
+            if (c0 == '-') {
+                v = v.negate();
+            }
+            return v.setScale(fracDigits, RoundingMode.UNNECESSARY);
+        } else {
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < field.length(); i++) {
+                char c = field.charAt(i);
+                if (c >= '0' && c <= '9') {
+                    sb.append(c);
+                } else if (c == ' ') {
+                    sb.append('0');
+                } else {
+                    sb.append('0');
+                }
+            }
+            if (sb.length() == 0) {
+                sb.append('0');
+            }
+            BigDecimal unscaled = new BigDecimal(sb.toString());
+            BigDecimal v = unscaled.movePointLeft(fracDigits);
+            return v.setScale(fracDigits, RoundingMode.UNNECESSARY);
         }
-        String all = sb.toString();
-        String intPart = all.substring(0, intDigits);
-        String decPart = all.substring(intDigits);
-        String num = intPart + "." + decPart;
-        if (s == '-') {
-            num = "-" + num;
-        }
-        return new BigDecimal(num);
     }
 
     private static int parseUnsigned(String field) {
-        StringBuilder sb = new StringBuilder(field.length());
-        for (int i = 0; i < field.length(); i++) {
-            char c = field.charAt(i);
+        String t = field.trim();
+        if (t.isEmpty()) {
+            return 0;
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < t.length(); i++) {
+            char c = t.charAt(i);
             if (c >= '0' && c <= '9') {
                 sb.append(c);
-            } else if (c == ' ') {
-                sb.append('0');
-            } else {
-                sb.append('0');
             }
         }
-        String s = sb.toString();
-        try {
-            return Integer.parseInt(s);
-        } catch (NumberFormatException e) {
+        if (sb.length() == 0) {
             return 0;
+        }
+        try {
+            return Integer.parseInt(sb.toString());
+        } catch (Exception e) {
+            BigInteger bi = new BigInteger(sb.toString());
+            bi = bi.remainder(BigInteger.valueOf(100000));
+            return bi.intValue();
         }
     }
 
-    private static String formatSigned(BigDecimal v, int intDigits) {
-        boolean neg = v.compareTo(BigDecimal.ZERO) < 0;
-        BigDecimal abs = v.abs().setScale(2, RoundingMode.UNNECESSARY);
-        BigDecimal scaled = abs.movePointRight(2);
-        long cents = scaled.longValueExact();
-        int total = intDigits + 2;
-        String digits = String.format(Locale.US, "%0" + total + "d", cents);
-        if (digits.length() > total) {
-            digits = digits.substring(digits.length() - total);
+    private static String formatSignedSeparate(BigDecimal v, int intDigits, int fracDigits) {
+        boolean neg = v.signum() < 0;
+        BigDecimal a = v.abs().setScale(fracDigits, RoundingMode.UNNECESSARY);
+        BigInteger unscaled = a.movePointRight(fracDigits).toBigIntegerExact();
+        String d = unscaled.toString();
+        int total = intDigits + fracDigits;
+        if (d.length() < total) {
+            d = "0".repeat(total - d.length()) + d;
+        } else if (d.length() > total) {
+            d = d.substring(d.length() - total);
         }
-        return (neg ? "-" : "+") + digits;
+        char s = neg ? '-' : '+';
+        return s + d;
     }
 }

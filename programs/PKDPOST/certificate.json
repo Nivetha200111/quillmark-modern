@@ -1,0 +1,43 @@
+{
+  "version": "0.1",
+  "program": "PKDPOST",
+  "legacy": {
+    "repository": "https://github.com/Nivetha200111/quillmark-legacy",
+    "commit": "733a1b059a641002587b565d283ee2c3e803bbba",
+    "path": "cobol/PKDPOST.cbl",
+    "copybooks": [
+      "copybooks/PKACCT.cpy",
+      "copybooks/PKOUT.cpy"
+    ],
+    "modules": [],
+    "job": "jcl/PKDPOST.jcl"
+  },
+  "java": {
+    "mainClass": "Pkdpost",
+    "files": [
+      "Pkdpost.java"
+    ]
+  },
+  "verification": {
+    "passed": 1037,
+    "total": 1037,
+    "stdoutMatch": true,
+    "seed": 4243,
+    "verifier": {
+      "repository": "https://github.com/Nivetha200111/Diocle",
+      "commit": "6e486081b9506eecb292578a2c467f4302f07ca0",
+      "gnucobol": "cobc (GnuCOBOL) 3.2.0"
+    }
+  },
+  "agent": {
+    "runId": "pkdpost-20261028-191821",
+    "model": "muse-spark-1.3-contributor",
+    "mode": "translate",
+    "rounds": 1,
+    "modelCalls": 8,
+    "totalTokens": 169249,
+    "estimatedCostUsd": 0.026621,
+    "memoryLessonsUsed": 6
+  },
+  "issuedAt": "2026-10-28T14:10:48+00:00"
+}
