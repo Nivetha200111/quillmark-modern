@@ -1,0 +1,88 @@
+{
+  "name": "dayctrl",
+  "description": "Imported from https://github.com/Nivetha200111/quillmark-legacy at 00621397eb30",
+  "program": "DAYCTRL",
+  "source": "src/DAYCTRL.cbl",
+  "copybookDir": "copybooks",
+  "dd": {
+    "input": "DAYIN",
+    "output": "CTLOUT"
+  },
+  "javaConversion": {
+    "dir": "java-conversion",
+    "mainClass": "Dayctrl",
+    "origin": "none yet: translate with the converter's run command"
+  },
+  "layoutsNote": "Derived from the copybooks by services/analyzer.",
+  "layouts": {
+    "input": {
+      "record": "DAY-REC",
+      "fields": [
+        {
+          "name": "DAY-ACCT-ID",
+          "kind": "alnum",
+          "length": 10
+        },
+        {
+          "name": "DAY-PRINCIPAL",
+          "kind": "numeric",
+          "digits": 9,
+          "scale": 2,
+          "signed": true,
+          "sign": "leading-separate"
+        },
+        {
+          "name": "DAY-RATE",
+          "kind": "numeric",
+          "digits": 1,
+          "scale": 4,
+          "signed": false
+        },
+        {
+          "name": "DAY-DAYS",
+          "kind": "numeric",
+          "digits": 3,
+          "scale": 0,
+          "signed": false
+        }
+      ]
+    },
+    "output": {
+      "record": "CTL-REC",
+      "fields": [
+        {
+          "name": "CTL-ACCT-ID",
+          "kind": "alnum",
+          "length": 10
+        },
+        {
+          "name": "CTL-INTEREST",
+          "kind": "numeric",
+          "digits": 7,
+          "scale": 2,
+          "signed": true,
+          "sign": "leading-separate"
+        },
+        {
+          "name": "CTL-RUN-TOTAL",
+          "kind": "numeric",
+          "digits": 11,
+          "scale": 2,
+          "signed": true,
+          "sign": "leading-separate"
+        },
+        {
+          "name": "CTL-FLAG",
+          "kind": "alnum",
+          "length": 1
+        }
+      ]
+    }
+  },
+  "import": {
+    "repository": "https://github.com/Nivetha200111/quillmark-legacy",
+    "commit": "00621397eb309b606e790241680280a42d52fa12",
+    "path": "cobol/DAYCTRL.cbl",
+    "job": "jcl/DAYCTRL.jcl"
+  }
+}
