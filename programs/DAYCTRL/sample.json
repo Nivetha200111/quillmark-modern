@@ -1,8 +1,10 @@
 {
   "name": "dayctrl",
-  "description": "Imported from https://github.com/Nivetha200111/quillmark-legacy at 00621397eb30",
+  "description": "Imported from https://github.com/Nivetha200111/quillmark-legacy at 733a1b059a64",
   "program": "DAYCTRL",
   "source": "src/DAYCTRL.cbl",
+  "modules": [],
+  "collation": "ebcdic",
   "copybookDir": "copybooks",
   "dd": {
     "input": "DAYIN",
@@ -45,7 +47,8 @@
           "scale": 0,
           "signed": false
         }
-      ]
+      ],
+      "format": "line"
     },
     "output": {
       "record": "CTL-REC",
@@ -76,12 +79,13 @@
           "kind": "alnum",
           "length": 1
         }
-      ]
+      ],
+      "format": "line"
     }
   },
   "import": {
     "repository": "https://github.com/Nivetha200111/quillmark-legacy",
-    "commit": "00621397eb309b606e790241680280a42d52fa12",
+    "commit": "733a1b059a641002587b565d283ee2c3e803bbba",
     "path": "cobol/DAYCTRL.cbl",
     "job": "jcl/DAYCTRL.jcl"
   }

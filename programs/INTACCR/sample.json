@@ -1,8 +1,10 @@
 {
   "name": "intaccr",
-  "description": "Imported from https://github.com/Nivetha200111/quillmark-legacy at 00621397eb30",
+  "description": "Imported from https://github.com/Nivetha200111/quillmark-legacy at 733a1b059a64",
   "program": "INTACCR",
   "source": "src/INTACCR.cbl",
+  "modules": [],
+  "collation": "ebcdic",
   "copybookDir": "copybooks",
   "dd": {
     "input": "ACCTIN",
@@ -53,7 +55,8 @@
             "P"
           ]
         }
-      ]
+      ],
+      "format": "line"
     },
     "output": {
       "record": "OUT-REC",
@@ -92,12 +95,13 @@
           "kind": "alnum",
           "length": 2
         }
-      ]
+      ],
+      "format": "line"
     }
   },
   "import": {
     "repository": "https://github.com/Nivetha200111/quillmark-legacy",
-    "commit": "00621397eb309b606e790241680280a42d52fa12",
+    "commit": "733a1b059a641002587b565d283ee2c3e803bbba",
     "path": "cobol/INTACCR.cbl",
     "job": "jcl/INTACCR.jcl"
   }

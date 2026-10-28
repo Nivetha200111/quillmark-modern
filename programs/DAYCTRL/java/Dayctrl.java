@@ -1,101 +1,96 @@
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
-import java.io.IOException;
-import java.math.BigDecimal;
-import java.math.RoundingMode;
+import java.io.*;
+import java.math.*;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Paths;
-import java.nio.file.StandardOpenOption;
 
 public class Dayctrl {
-    private BufferedReader dayReader;
-    private BufferedWriter ctlWriter;
-    private String wsDayStatus = "00";
-    private String wsCtlStatus = "00";
-    private boolean endOfAccounts = false;
-    private String dayAcctId = "          ";
-    private BigDecimal dayPrincipal = new BigDecimal("0.00");
-    private BigDecimal dayRate = new BigDecimal("0.0000");
-    private BigDecimal dayDays = BigDecimal.ZERO;
-    private BigDecimal wsInterest = new BigDecimal("0.00");
-    private BigDecimal wsCtlTotal = new BigDecimal("0.00");
-    private char ctlFlag = '-';
-    private long wsReadCnt = 0;
-    private long wsLostCnt = 0;
-    private static final BigDecimal MOD_INTEREST = new BigDecimal("10000000");
-    private static final BigDecimal MOD_TOTAL = new BigDecimal("100000000000");
-    private static final BigDecimal DAYS_365 = new BigDecimal("365");
+    private static BufferedReader dayReader = null;
+    private static BufferedWriter ctlWriter = null;
+    private static String wsDayStatus = "00";
+    private static String wsCtlStatus = "00";
+    private static boolean endOfAccounts = false;
+    private static BigDecimal wsInterest = BigDecimal.ZERO.setScale(2);
+    private static BigDecimal wsCtlTotal = BigDecimal.ZERO.setScale(2);
+    private static long wsReadCnt = 0;
+    private static long wsLostCnt = 0;
+    private static String dayAcctId = "          ";
+    private static BigDecimal dayPrincipal = BigDecimal.ZERO.setScale(2);
+    private static BigDecimal dayRate = BigDecimal.ZERO.setScale(4);
+    private static int dayDays = 0;
+    private static char ctlFlag = '-';
+    private static String ctlAcctId = "          ";
 
     public static void main(String[] args) throws Exception {
-        Dayctrl prog = new Dayctrl();
-        prog.paragraph0000Main();
+        p0000Main();
     }
 
-    private void paragraph0000Main() throws Exception {
-        paragraph1000Init();
+    private static void p0000Main() throws Exception {
+        p1000Init();
         while (!endOfAccounts) {
-            paragraph2000Process();
+            p2000Process();
         }
-        paragraph9000Term();
+        p9000Term();
     }
 
-    private void paragraph1000Init() throws Exception {
+    private static void p1000Init() throws Exception {
         String dayPath = System.getenv("DD_DAYIN");
         String ctlPath = System.getenv("DD_CTLOUT");
-        if (dayPath == null) {
+        if (dayPath == null || dayPath.isEmpty()) {
             wsDayStatus = "35";
-            System.out.print("DAYCTRL OPEN DAYIN FAILED " + wsDayStatus + "\n");
+            System.out.println("DAYCTRL OPEN DAYIN FAILED " + wsDayStatus);
             System.exit(16);
         }
         try {
-            dayReader = Files.newBufferedReader(Paths.get(dayPath), StandardCharsets.ISO_8859_1);
+            dayReader = new BufferedReader(new InputStreamReader(new FileInputStream(dayPath), StandardCharsets.ISO_8859_1));
             wsDayStatus = "00";
-        } catch (Exception e) {
+        } catch (FileNotFoundException e) {
             wsDayStatus = "35";
-            System.out.print("DAYCTRL OPEN DAYIN FAILED " + wsDayStatus + "\n");
+            System.out.println("DAYCTRL OPEN DAYIN FAILED " + wsDayStatus);
+            System.exit(16);
+        } catch (IOException e) {
+            wsCtlStatus = "30";
+            wsDayStatus = "30";
+            System.out.println("DAYCTRL OPEN DAYIN FAILED " + wsDayStatus);
             System.exit(16);
         }
-        if (ctlPath == null) {
+        if (ctlPath == null || ctlPath.isEmpty()) {
             wsCtlStatus = "35";
-            System.out.print("DAYCTRL OPEN CTLOUT FAILED " + wsCtlStatus + "\n");
+            System.out.println("DAYCTRL OPEN CTLOUT FAILED " + wsCtlStatus);
             System.exit(16);
         }
         try {
-            ctlWriter = Files.newBufferedWriter(Paths.get(ctlPath), StandardCharsets.ISO_8859_1, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
+            ctlWriter = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(ctlPath), StandardCharsets.ISO_8859_1));
             wsCtlStatus = "00";
-        } catch (Exception e) {
+        } catch (FileNotFoundException e) {
             wsCtlStatus = "35";
-            System.out.print("DAYCTRL OPEN CTLOUT FAILED " + wsCtlStatus + "\n");
+            System.out.println("DAYCTRL OPEN CTLOUT FAILED " + wsCtlStatus);
+            System.exit(16);
+        } catch (IOException e) {
+            wsCtlStatus = "30";
+            System.out.println("DAYCTRL OPEN CTLOUT FAILED " + wsCtlStatus);
             System.exit(16);
         }
-        paragraph8000Read();
+        p8000Read();
     }
 
-    private void paragraph2000Process() throws Exception {
+    private static void p2000Process() throws Exception {
         wsReadCnt = (wsReadCnt + 1) % 10000000L;
-        paragraph3000Accrue();
-        paragraph5000WriteResult();
-        paragraph8000Read();
+        p3000Accrue();
+        p5000WriteResult();
+        p8000Read();
     }
 
-    private void paragraph3000Accrue() {
-        BigDecimal numer = dayPrincipal.multiply(dayRate).multiply(dayDays);
-        BigDecimal interest = numer.divide(DAYS_365, 2, RoundingMode.HALF_UP);
-        if (interest.abs().compareTo(MOD_INTEREST) >= 0) {
-            interest = interest.remainder(MOD_INTEREST);
-            interest = interest.setScale(2, RoundingMode.UNNECESSARY);
-        }
+    private static void p3000Accrue() {
+        BigDecimal daysBD = BigDecimal.valueOf(dayDays);
+        BigDecimal prod = dayPrincipal.multiply(dayRate).multiply(daysBD);
+        BigDecimal interest = prod.divide(BigDecimal.valueOf(365), 2, RoundingMode.HALF_UP);
+        interest = truncToPic(interest, 7, 2);
         wsInterest = interest;
-        wsCtlTotal = wsCtlTotal.add(wsInterest);
-        if (wsCtlTotal.abs().compareTo(MOD_TOTAL) >= 0) {
-            wsCtlTotal = wsCtlTotal.remainder(MOD_TOTAL);
-            wsCtlTotal = wsCtlTotal.setScale(2, RoundingMode.UNNECESSARY);
-        }
-        if (wsInterest.compareTo(BigDecimal.ZERO) == 0
-                && dayPrincipal.compareTo(BigDecimal.ZERO) != 0
-                && dayRate.compareTo(BigDecimal.ZERO) != 0
-                && dayDays.compareTo(BigDecimal.ZERO) != 0) {
+        wsCtlTotal = truncToPic(wsCtlTotal.add(wsInterest), 11, 2);
+        boolean interestZero = wsInterest.compareTo(BigDecimal.ZERO) == 0;
+        boolean princNz = dayPrincipal.compareTo(BigDecimal.ZERO) != 0;
+        boolean rateNz = dayRate.compareTo(BigDecimal.ZERO) != 0;
+        boolean daysNz = dayDays != 0;
+        if (interestZero && princNz && rateNz && daysNz) {
             ctlFlag = 'Z';
             wsLostCnt = (wsLostCnt + 1) % 10000000L;
         } else {
@@ -103,145 +98,170 @@ public class Dayctrl {
         }
     }
 
-    private void paragraph5000WriteResult() throws Exception {
-        String acct = dayAcctId;
-        if (acct.length() < 10) {
-            acct = acct + " ".repeat(10 - acct.length());
-        } else if (acct.length() > 10) {
-            acct = acct.substring(0, 10);
-        }
-        String interestField = formatSigned(wsInterest, 7);
-        String totalField = formatSigned(wsCtlTotal, 11);
-        String rec = acct + interestField + totalField + ctlFlag;
-        ctlWriter.write(rec);
+    private static void p5000WriteResult() throws Exception {
+        ctlAcctId = dayAcctId;
+        String interestField = formatSignedSeparate(wsInterest, 7, 2);
+        String totalField = formatSignedSeparate(wsCtlTotal, 11, 2);
+        String line = ctlAcctId + interestField + totalField + ctlFlag;
+        ctlWriter.write(line);
         ctlWriter.write("\n");
     }
 
-    private void paragraph8000Read() throws Exception {
-        String line = null;
+    private static void p8000Read() throws Exception {
+        if (dayReader == null) {
+            endOfAccounts = true;
+            return;
+        }
+        String line;
         try {
             line = dayReader.readLine();
         } catch (IOException e) {
-            line = null;
+            endOfAccounts = true;
+            return;
         }
         if (line == null) {
             endOfAccounts = true;
             return;
         }
         if (line.length() < 30) {
-            line = line + " ".repeat(30 - line.length());
+            StringBuilder sb = new StringBuilder(line);
+            while (sb.length() < 30) sb.append(' ');
+            line = sb.toString();
         } else if (line.length() > 30) {
             line = line.substring(0, 30);
         }
         dayAcctId = line.substring(0, 10);
-        String principalField = line.substring(10, 22);
-        String rateField = line.substring(22, 27);
-        String daysField = line.substring(27, 30);
-        boolean neg = false;
-        String digits;
-        char c0 = principalField.charAt(0);
-        if (c0 == '-' || c0 == '+') {
-            neg = (c0 == '-');
-            digits = principalField.substring(1);
-        } else {
-            digits = principalField;
-        }
-        digits = digits.trim();
-        if (digits.isEmpty()) {
-            digits = "0";
-        }
-        BigDecimal mag = new BigDecimal(digits).movePointLeft(2);
-        if (neg) {
-            mag = mag.negate();
-        }
-        dayPrincipal = mag;
-        String rs = rateField.trim();
-        if (rs.isEmpty()) {
-            rs = "0";
-        }
-        dayRate = new BigDecimal(rs).movePointLeft(4);
-        String ds = daysField.trim();
-        if (ds.isEmpty()) {
-            ds = "0";
-        }
-        dayDays = new BigDecimal(ds);
+        String princStr = line.substring(10, 22);
+        String rateStr = line.substring(22, 27);
+        String daysStr = line.substring(27, 30);
+        dayPrincipal = parsePrincipal(princStr);
+        dayRate = parseRate(rateStr);
+        dayDays = parseDays(daysStr);
     }
 
-    private void paragraph9000Term() throws Exception {
-        try {
-            if (dayReader != null) {
-                dayReader.close();
-            }
-        } catch (IOException ignored) {
-        }
-        try {
-            if (ctlWriter != null) {
-                ctlWriter.flush();
-                ctlWriter.close();
-            }
-        } catch (IOException ignored) {
-        }
-        String edited = formatEdited(wsCtlTotal);
-        String readStr = String.format("%010d", Long.valueOf(wsReadCnt));
-        String lostStr = String.format("%010d", Long.valueOf(wsLostCnt));
-        String msg = "DAYCTRL ACCOUNTS=" + readStr + " LOST=" + lostStr + " CONTROL=" + edited;
-        System.out.print(msg + "\n");
+    private static void p9000Term() throws Exception {
+        try { if (dayReader != null) dayReader.close(); } catch (IOException e) { }
+        try { if (ctlWriter != null) ctlWriter.close(); } catch (IOException e) { }
+        String edit = formatCtlEdit(wsCtlTotal);
+        String out = "DAYCTRL ACCOUNTS=" + String.format("%07d", wsReadCnt)
+                + " LOST=" + String.format("%07d", wsLostCnt)
+                + " CONTROL=" + edit;
+        System.out.println(out);
     }
 
-    static String formatSigned(BigDecimal v, int intDigits) {
-        char sign = v.signum() < 0 ? '-' : '+';
-        BigDecimal a = v.abs().setScale(2, RoundingMode.UNNECESSARY);
-        String plain = a.toPlainString();
-        int dot = plain.indexOf('.');
-        String intPart = plain.substring(0, dot);
-        String fracPart = plain.substring(dot + 1);
-        if (intPart.length() < intDigits) {
-            intPart = "0".repeat(intDigits - intPart.length()) + intPart;
-        } else if (intPart.length() > intDigits) {
-            intPart = intPart.substring(intPart.length() - intDigits);
+    private static BigDecimal parsePrincipal(String s) {
+        if (s == null || s.length() < 12) {
+            s = (s == null ? "" : s);
+            while (s.length() < 12) s = s + " ";
         }
-        if (fracPart.length() < 2) {
-            fracPart = fracPart + "0".repeat(2 - fracPart.length());
+        char sc = s.charAt(0);
+        int sign = (sc == '-') ? -1 : 1;
+        String digits = s.substring(1);
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < digits.length(); i++) {
+            char c = digits.charAt(i);
+            if (c >= '0' && c <= '9') sb.append(c);
+            else if (c == ' ') sb.append('0');
+            else if (c == '+' || c == '-') sb.append('0');
+            else sb.append('0');
         }
-        return sign + intPart + fracPart;
+        String ds = sb.toString();
+        if (ds.isEmpty()) ds = "0";
+        BigInteger bi = new BigInteger(ds);
+        BigDecimal v = new BigDecimal(bi, 2);
+        if (sign < 0) v = v.negate();
+        return v;
     }
 
-    static String formatEdited(BigDecimal total) {
-        boolean neg = total.signum() < 0;
-        BigDecimal a = total.abs().setScale(2, RoundingMode.UNNECESSARY);
-        String plain = a.toPlainString();
-        int dot = plain.indexOf('.');
-        String intPart = plain.substring(0, dot);
-        String fracPart = plain.substring(dot + 1);
-        String padded;
-        if (intPart.length() < 12) {
-            padded = "0".repeat(12 - intPart.length()) + intPart;
-        } else {
-            padded = intPart.substring(intPart.length() - 12);
+    private static BigDecimal parseRate(String s) {
+        if (s == null) s = "";
+        while (s.length() < 5) s = s + " ";
+        if (s.length() > 5) s = s.substring(0, 5);
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c >= '0' && c <= '9') sb.append(c);
+            else if (c == ' ') sb.append('0');
+            else sb.append('0');
         }
-        char[] arr = padded.toCharArray();
-        int first = -1;
+        String ds = sb.toString();
+        if (ds.isEmpty()) ds = "0";
+        BigInteger bi = new BigInteger(ds);
+        return new BigDecimal(bi, 4);
+    }
+
+    private static int parseDays(String s) {
+        if (s == null) s = "";
+        while (s.length() < 3) s = s + " ";
+        if (s.length() > 3) s = s.substring(0, 3);
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c >= '0' && c <= '9') sb.append(c);
+            else if (c == ' ') sb.append('0');
+            else sb.append('0');
+        }
+        String ds = sb.toString();
+        if (ds.isEmpty()) return 0;
+        try { return Integer.parseInt(ds); } catch (NumberFormatException e) { return 0; }
+    }
+
+    private static BigDecimal truncToPic(BigDecimal v, int intDigits, int fracDigits) {
+        int total = intDigits + fracDigits;
+        BigInteger mod = BigInteger.TEN.pow(total);
+        BigDecimal scaled = v.setScale(fracDigits, RoundingMode.UNNECESSARY).movePointRight(fracDigits);
+        BigInteger unscaled;
+        try { unscaled = scaled.toBigIntegerExact(); } catch (ArithmeticException e) { unscaled = scaled.toBigInteger(); }
+        boolean neg = unscaled.signum() < 0;
+        BigInteger abs = unscaled.abs().mod(mod);
+        if (abs.equals(BigInteger.ZERO)) {
+            return BigDecimal.ZERO.setScale(fracDigits);
+        }
+        BigInteger res = neg ? abs.negate() : abs;
+        return new BigDecimal(res, fracDigits);
+    }
+
+    private static String formatSignedSeparate(BigDecimal v, int intDigits, int fracDigits) {
+        int total = intDigits + fracDigits;
+        boolean neg = v.compareTo(BigDecimal.ZERO) < 0;
+        BigDecimal abs = v.abs().setScale(fracDigits, RoundingMode.UNNECESSARY);
+        BigInteger unscaledAbs = abs.movePointRight(fracDigits).toBigIntegerExact().mod(BigInteger.TEN.pow(total));
+        String digits = unscaledAbs.toString();
+        if (digits.length() < total) digits = "0".repeat(total - digits.length()) + digits;
+        else if (digits.length() > total) digits = digits.substring(digits.length() - total);
+        char sign = (neg && !unscaledAbs.equals(BigInteger.ZERO)) ? '-' : '+';
+        return sign + digits;
+    }
+
+    private static String formatCtlEdit(BigDecimal total) {
+        boolean neg = total.compareTo(BigDecimal.ZERO) < 0;
+        BigDecimal abs = total.abs().setScale(2, RoundingMode.UNNECESSARY);
+        BigInteger unscaled = abs.movePointRight(2).toBigIntegerExact();
+        BigInteger[] dr = unscaled.divideAndRemainder(BigInteger.valueOf(100));
+        BigInteger intPart = dr[0];
+        int frac = dr[1].intValue();
+        String intStr = intPart.toString();
+        BigInteger mod12 = BigInteger.TEN.pow(12);
+        intPart = intPart.mod(mod12);
+        intStr = intPart.toString();
+        if (intStr.length() < 12) intStr = "0".repeat(12 - intStr.length()) + intStr;
+        else if (intStr.length() > 12) intStr = intStr.substring(intStr.length() - 12);
+        String fracStr = String.format("%02d", frac);
+        int firstNonZero = -1;
         for (int i = 0; i < 12; i++) {
-            if (arr[i] != '0') {
-                first = i;
-                break;
-            }
+            if (intStr.charAt(i) != '0') { firstNonZero = i; break; }
         }
-        if (first == -1) {
-            first = 11;
-        }
-        if (neg) {
-            if (first > 0) {
-                for (int i = 0; i < first - 1; i++) {
-                    arr[i] = ' ';
-                }
-                arr[first - 1] = '-';
+        char[] out = new char[12];
+        for (int i = 0; i < 12; i++) out[i] = ' ';
+        if (firstNonZero == -1) {
+            out[11] = '0';
+            if (neg) {
+                if (!unscaled.equals(BigInteger.ZERO)) out[10] = '-';
             }
         } else {
-            for (int i = 0; i < first; i++) {
-                arr[i] = ' ';
-            }
+            for (int i = firstNonZero; i < 12; i++) out[i] = intStr.charAt(i);
+            if (neg) out[firstNonZero - 1] = '-';
         }
-        return new String(arr) + "." + fracPart;
+        return new String(out) + "." + fracStr;
     }
 }
