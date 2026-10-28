@@ -14,3 +14,7 @@ programs/<PROGRAM>/
 ## Don't trust the certificate: CI checks it
 
 Every pull request runs **reverify** (`.github/workflows/reverify.yml`). It builds GnuCOBOL 3.2, installs the Diocle verifier at the commit the certificate names, fetches the COBOL at the legacy commit the certificate names, and runs the original and the Java on 1,000 fresh inputs from a seed tied to the CI run, a seed Diocle never used. Any field that differs fails the check.
+
+**What CI pins, not the PR:** the legacy repository (a certificate naming any other fails), the Diocle branch the verifier must come from (a commit not on Diocle `main` fails), and the record layouts (re-derived from the legacy copybooks; a PR whose `sample.json` differs fails). Paths in a certificate must stay inside the legacy checkout.
+
+**What it can't pin:** GitHub runs the workflow from the pull request itself, so a PR that edits `.github/` could change the check. `CODEOWNERS` requires owner review for any such change; Diocle's delivery PRs only touch `programs/`.
