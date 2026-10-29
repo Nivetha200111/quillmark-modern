@@ -1,90 +1,94 @@
-import java.io.*;
-import java.math.*;
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.math.BigDecimal;
+import java.math.BigInteger;
+import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.*;
-import java.util.*;
 
 public class Intaccr {
     private String wsAcctStatus = "00";
     private String wsOutStatus = "00";
-    private boolean endOfAccounts = false;
+    private boolean eofFlag = false;
     private final BigDecimal wsPenaltyRate = new BigDecimal("0.0500");
     private final BigDecimal wsFeeFloor = new BigDecimal("1000.00");
     private final BigDecimal wsFeeCap = new BigDecimal("25.00");
-    private BigDecimal wsInterest = BigDecimal.ZERO.setScale(2);
-    private boolean wsInterestNegZero = false;
-    private BigDecimal wsFee = BigDecimal.ZERO.setScale(2);
-    private BigDecimal wsNewBal = BigDecimal.ZERO.setScale(2);
-    private boolean wsNewBalNegZero = false;
-    private long wsReadCnt = 0;
-    private long wsWriteCnt = 0;
-
+    private BigDecimal wsInterest = BigDecimal.ZERO;
+    private BigDecimal wsFee = BigDecimal.ZERO;
+    private BigDecimal wsNewBal = BigDecimal.ZERO;
+    private boolean wsInterestNeg = false;
+    private boolean wsFeeNeg = false;
+    private boolean wsNewBalNeg = false;
+    private int wsReadCnt = 0;
+    private int wsWriteCnt = 0;
+    private BufferedReader acctReader;
+    private BufferedWriter outWriter;
     private String acctId = "          ";
-    private BigDecimal acctBalance = BigDecimal.ZERO.setScale(2);
-    private BigDecimal acctRate = BigDecimal.ZERO.setScale(4);
+    private BigDecimal acctBalance = BigDecimal.ZERO;
+    private BigDecimal acctRate = BigDecimal.ZERO;
     private int acctDays = 0;
     private String acctTier = " ";
-
-    private BufferedReader acctReader = null;
-    private OutputStream outStream = null;
-    private String outAcctId = "          ";
-    private BigDecimal outInterestV = BigDecimal.ZERO.setScale(2);
-    private boolean outInterestNegZero = false;
-    private BigDecimal outFeeV = BigDecimal.ZERO.setScale(2);
-    private BigDecimal outNewBalV = BigDecimal.ZERO.setScale(2);
-    private boolean outNewBalNegZero = false;
-    private String outStatus = "  ";
+    private static final BigInteger MOD_7 = BigInteger.TEN.pow(7);
+    private static final BigInteger MOD_9 = BigInteger.TEN.pow(9);
+    private static final BigInteger MOD_11 = BigInteger.TEN.pow(11);
+    private static final BigInteger MOD_FEE = BigInteger.TEN.pow(7);
+    private static final BigInteger DENOM = BigInteger.valueOf(3650000L);
 
     public static void main(String[] args) throws Exception {
-        Intaccr p = new Intaccr();
-        p.m0000Main();
+        Intaccr prog = new Intaccr();
+        prog.m0000Main();
     }
 
     private void m0000Main() throws Exception {
         m1000Init();
-        while (!endOfAccounts) {
+        while (!eofFlag) {
             m2000Process();
         }
         m9000Term();
     }
 
     private void m1000Init() throws Exception {
-        String acctPath = System.getenv("DD_ACCTIN");
+        String inPath = System.getenv("DD_ACCTIN");
+        if (inPath == null || inPath.isEmpty()) {
+            inPath = "ACCTIN";
+        }
         String outPath = System.getenv("DD_INTOUT");
-        if (acctPath == null || acctPath.isEmpty()) {
-            wsAcctStatus = "35";
-            displayLine("INTACCR OPEN ACCTIN FAILED " + wsAcctStatus);
-            System.exit(16);
-        }
-        try {
-            acctReader = Files.newBufferedReader(Paths.get(acctPath), StandardCharsets.ISO_8859_1);
-            wsAcctStatus = "00";
-        } catch (Exception e) {
-            wsAcctStatus = "35";
-            displayLine("INTACCR OPEN ACCTIN FAILED " + wsAcctStatus);
-            System.exit(16);
-        }
         if (outPath == null || outPath.isEmpty()) {
-            wsOutStatus = "35";
-            displayLine("INTACCR OPEN INTOUT FAILED " + wsOutStatus);
-            System.exit(16);
+            outPath = "INTOUT";
         }
         try {
-            Path op = Paths.get(outPath);
-            Path parent = op.toAbsolutePath().getParent();
-            if (parent != null) Files.createDirectories(parent);
-            outStream = Files.newOutputStream(op, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
-            wsOutStatus = "00";
-        } catch (Exception e) {
-            wsOutStatus = "35";
-            displayLine("INTACCR OPEN INTOUT FAILED " + wsOutStatus);
+            acctReader = new BufferedReader(new InputStreamReader(new FileInputStream(inPath), StandardCharsets.ISO_8859_1));
+            wsAcctStatus = "00";
+        } catch (java.io.FileNotFoundException e) {
+            wsAcctStatus = "35";
+            System.out.println("INTACCR OPEN ACCTIN FAILED " + wsAcctStatus);
             System.exit(16);
+            return;
+        } catch (IOException e) {
+            wsAcctStatus = "30";
+            System.out.println("INTACCR OPEN ACCTIN FAILED " + wsAcctStatus);
+            System.exit(16);
+            return;
+        }
+        try {
+            outWriter = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(outPath), StandardCharsets.ISO_8859_1));
+            wsOutStatus = "00";
+        } catch (IOException e) {
+            wsOutStatus = "30";
+            System.out.println("INTACCR OPEN INTOUT FAILED " + wsOutStatus);
+            try { acctReader.close(); } catch (Exception ex) { }
+            System.exit(16);
+            return;
         }
         m8000Read();
     }
 
     private void m2000Process() throws Exception {
-        wsReadCnt = (wsReadCnt + 1) % 10000000L;
+        wsReadCnt = (wsReadCnt + 1) % 10000000;
         m3000CalcInterest();
         m4000CalcFee();
         m5000WriteResult();
@@ -92,215 +96,220 @@ public class Intaccr {
     }
 
     private void m3000CalcInterest() {
-        int cmp = acctBalance.compareTo(BigDecimal.ZERO);
-        if (cmp > 0) {
-            BigDecimal numerator = acctBalance.multiply(acctRate).multiply(BigDecimal.valueOf(acctDays));
-            wsInterest = roundQuotientToCents(numerator, 365);
-            wsInterestNegZero = false;
-            wsInterest = truncStore(wsInterest, 7, 2);
-            if (wsInterest.compareTo(BigDecimal.ZERO) == 0) wsInterestNegZero = false;
-        } else if (cmp < 0) {
+        if (acctBalance.compareTo(BigDecimal.ZERO) > 0) {
+            wsInterest = interestRounded(acctBalance, acctRate, acctDays);
+        } else if (acctBalance.compareTo(BigDecimal.ZERO) < 0) {
             BigDecimal effRate = acctRate.add(wsPenaltyRate);
-            BigDecimal numerator = acctBalance.multiply(effRate).multiply(BigDecimal.valueOf(acctDays));
-            if (numerator.compareTo(BigDecimal.ZERO) == 0) {
-                wsInterest = BigDecimal.ZERO.setScale(2);
-                wsInterestNegZero = false;
-            } else {
-                BigDecimal r = roundQuotientToCents(numerator, 365);
-                if (r.compareTo(BigDecimal.ZERO) == 0) {
-                    wsInterest = BigDecimal.ZERO.setScale(2);
-                    wsInterestNegZero = numerator.signum() < 0;
-                } else {
-                    wsInterest = truncStore(r, 7, 2);
-                    wsInterestNegZero = false;
-                    if (wsInterest.compareTo(BigDecimal.ZERO) == 0) wsInterestNegZero = numerator.signum() < 0;
-                }
-            }
+            wsInterest = interestRounded(acctBalance, effRate, acctDays);
         } else {
-            wsInterest = BigDecimal.ZERO.setScale(2);
-            wsInterestNegZero = false;
+            wsInterest = BigDecimal.ZERO;
+            wsInterestNeg = false;
         }
     }
 
     private void m4000CalcFee() {
-        wsFee = BigDecimal.ZERO.setScale(2);
+        wsFee = BigDecimal.ZERO;
+        wsFeeNeg = false;
         boolean isPremium = "P".equals(acctTier);
         if (!isPremium && acctBalance.compareTo(wsFeeFloor) < 0) {
             BigDecimal diff = wsFeeFloor.subtract(acctBalance);
-            BigDecimal prod = diff.multiply(new BigDecimal("0.0015"));
-            BigDecimal t = prod.setScale(2, RoundingMode.DOWN);
-            t = t.setScale(2);
-            t = truncStore(t, 5, 2);
-            wsFee = t;
+            BigDecimal raw = diff.multiply(new BigDecimal("0.0015"));
+            BigDecimal trunc = raw.setScale(2, RoundingMode.DOWN);
+            BigDecimal stored = truncStore(trunc, 5, 2);
+            wsFee = stored;
+            wsFeeNeg = trunc.signum() < 0;
             if (wsFee.compareTo(wsFeeCap) > 0) {
                 wsFee = wsFeeCap;
+                wsFeeNeg = false;
             }
         }
     }
 
     private void m5000WriteResult() throws Exception {
-        BigDecimal nb = acctBalance.add(wsInterest).subtract(wsFee);
-        nb = nb.setScale(2);
-        nb = truncStore(nb, 9, 2);
-        boolean negZero = false;
-        if (nb.compareTo(BigDecimal.ZERO) == 0) {
-            boolean exactNeg = false;
-            BigDecimal exact = acctBalance.add(effectiveInterestValue()).subtract(wsFee);
-            if (exact.compareTo(BigDecimal.ZERO) < 0) exactNeg = true;
-            else if (exact.compareTo(BigDecimal.ZERO) == 0) {
-                if (wsInterestNegZero) exactNeg = true;
-            }
-            negZero = exactNeg;
-        }
-        wsNewBal = nb;
-        wsNewBalNegZero = negZero;
-        outAcctId = acctId;
-        outInterestV = wsInterest;
-        outInterestNegZero = wsInterestNegZero;
-        outFeeV = wsFee;
-        outNewBalV = wsNewBal;
-        outNewBalNegZero = wsNewBalNegZero;
-        if (isNegative(wsNewBal, wsNewBalNegZero)) {
-            outStatus = "OD";
+        BigDecimal newBalRaw = acctBalance.add(wsInterest).subtract(wsFee);
+        wsNewBal = truncStore(newBalRaw.setScale(2, RoundingMode.DOWN), 9, 2);
+        wsNewBalNeg = newBalRaw.signum() < 0;
+        String outId = acctId;
+        String sInterest = formatSigned(wsInterest, 7, 2, wsInterestNeg);
+        String sFee = formatSigned(wsFee, 5, 2, wsFeeNeg);
+        String sNewBal = formatSigned(wsNewBal, 9, 2, wsNewBalNeg);
+        String status;
+        if (wsNewBal.compareTo(BigDecimal.ZERO) < 0) {
+            status = "OD";
         } else if (wsFee.compareTo(BigDecimal.ZERO) > 0) {
-            outStatus = "FE";
+            status = "FE";
         } else {
-            outStatus = "OK";
+            status = "OK";
         }
-        String rec = padRight(outAcctId, 10)
-            + formatSigned(outInterestV, outInterestNegZero, 7, 2)
-            + formatSigned(outFeeV, false, 5, 2)
-            + formatSigned(outNewBalV, outNewBalNegZero, 9, 2)
-            + outStatus;
-        outStream.write(rec.getBytes(StandardCharsets.ISO_8859_1));
-        outStream.write('\n');
-        wsWriteCnt = (wsWriteCnt + 1) % 10000000L;
+        String rec = outId + sInterest + sFee + sNewBal + status;
+        outWriter.write(rec);
+        outWriter.write("\n");
+        wsWriteCnt = (wsWriteCnt + 1) % 10000000;
     }
 
     private void m8000Read() throws Exception {
-        String line = acctReader.readLine();
+        String line = null;
+        try {
+            line = acctReader.readLine();
+        } catch (IOException e) {
+            line = null;
+        }
         if (line == null) {
-            endOfAccounts = true;
+            eofFlag = true;
             return;
         }
-        if (line.endsWith("\r")) line = line.substring(0, line.length() - 1);
-        if (line.length() < 31) line = line + " ".repeat(31 - line.length());
-        if (line.length() > 31) line = line.substring(0, 31);
-        acctId = line.substring(0, 10);
-        String balStr = line.substring(10, 22);
-        String rateStr = line.substring(22, 27);
-        String daysStr = line.substring(27, 30);
-        acctTier = line.substring(30, 31);
-        acctBalance = parseBalance(balStr);
-        acctRate = parseRate(rateStr);
-        acctDays = parseDays(daysStr);
+        if (line.endsWith("\r") && line.length() > 0) {
+        }
+        String rec = padRight(line, 31);
+        if (rec.length() > 31) {
+            rec = rec.substring(0, 31);
+        }
+        acctId = rec.substring(0, 10);
+        String sBal = rec.substring(10, 22);
+        String sRate = rec.substring(22, 27);
+        String sDays = rec.substring(27, 30);
+        String sTier = rec.substring(30, 31);
+        acctBalance = parseBalance(sBal);
+        acctRate = parseRate(sRate);
+        acctDays = parseDays(sDays);
+        acctTier = sTier;
     }
 
     private void m9000Term() throws Exception {
-        try { if (acctReader != null) acctReader.close(); } catch (Exception e) {}
-        try { if (outStream != null) outStream.close(); } catch (Exception e) {}
-        String cntR = String.format("%07d", wsReadCnt);
-        String cntW = String.format("%07d", wsWriteCnt);
-        displayLine("INTACCR READ=" + cntR + " WRITTEN=" + cntW);
+        try { if (acctReader != null) acctReader.close(); } catch (Exception e) { }
+        try { if (outWriter != null) outWriter.close(); } catch (Exception e) { }
+        String r = String.format("%07d", wsReadCnt);
+        String w = String.format("%07d", wsWriteCnt);
+        System.out.println("INTACCR READ=" + r + " WRITTEN=" + w);
     }
 
-    private BigDecimal effectiveInterestValue() {
-        if (wsInterestNegZero) return new BigDecimal("-0.00");
-        return wsInterest;
-    }
-
-    private static boolean isNegative(BigDecimal v, boolean negZero) {
-        if (v.compareTo(BigDecimal.ZERO) < 0) return true;
-        if (v.compareTo(BigDecimal.ZERO) == 0 && negZero) return true;
-        return false;
-    }
-
-    private static BigDecimal roundQuotientToCents(BigDecimal numerator, int divisor) {
-        BigInteger N = numerator.movePointRight(6).toBigIntegerExact();
-        BigInteger D = BigInteger.valueOf(3650000L);
-        if (N.signum() == 0) return BigDecimal.ZERO.setScale(2);
-        boolean neg = N.signum() < 0;
-        BigInteger absN = N.abs();
-        BigInteger[] qr = absN.divideAndRemainder(D);
-        BigInteger q = qr[0];
-        BigInteger r = qr[1];
-        BigInteger twice = r.shiftLeft(1);
-        int c = twice.compareTo(D);
-        if (c > 0 || c == 0) q = q.add(BigInteger.ONE);
-        if (neg) q = q.negate();
-        BigDecimal cents = new BigDecimal(q);
-        return cents.movePointLeft(2).setScale(2);
+    private BigDecimal interestRounded(BigDecimal bal, BigDecimal rate, int days) {
+        if (days == 0 || bal.compareTo(BigDecimal.ZERO) == 0) {
+            wsInterestNeg = false;
+            return BigDecimal.ZERO;
+        }
+        BigInteger bScaled = bal.movePointRight(2).toBigIntegerExact();
+        BigInteger rScaled = rate.movePointRight(4).toBigIntegerExact();
+        BigInteger num = bScaled.multiply(rScaled).multiply(BigInteger.valueOf(days));
+        boolean neg = num.signum() < 0;
+        BigInteger abs = num.abs();
+        BigInteger q = abs.divide(DENOM);
+        BigInteger rem = abs.remainder(DENOM);
+        if (rem.multiply(BigInteger.valueOf(2)).compareTo(DENOM) >= 0) {
+            q = q.add(BigInteger.ONE);
+        }
+        if (neg) {
+            q = q.negate();
+        }
+        wsInterestNeg = q.signum() < 0;
+        BigInteger trunc = q.remainder(MOD_9);
+        return new BigDecimal(trunc, 2);
     }
 
     private static BigDecimal truncStore(BigDecimal v, int intDigits, int fracDigits) {
-        BigDecimal t = v.setScale(fracDigits, RoundingMode.DOWN);
-        BigInteger scaled = t.movePointRight(fracDigits).toBigIntegerExact();
+        BigDecimal s = v.setScale(fracDigits, RoundingMode.DOWN);
+        BigInteger scaled = s.movePointRight(fracDigits).toBigIntegerExact();
         BigInteger mod = BigInteger.TEN.pow(intDigits + fracDigits);
-        boolean neg = scaled.signum() < 0;
-        BigInteger abs = scaled.abs();
-        BigInteger trunc = abs.mod(mod);
-        if (neg) trunc = trunc.negate();
-        return new BigDecimal(trunc).movePointLeft(fracDigits).setScale(fracDigits);
+        BigInteger t = scaled.remainder(mod);
+        return new BigDecimal(t, fracDigits);
     }
 
-    private static String formatSigned(BigDecimal v, boolean negZero, int intDigits, int fracDigits) {
-        boolean neg;
-        if (v.compareTo(BigDecimal.ZERO) < 0) neg = true;
-        else if (v.compareTo(BigDecimal.ZERO) == 0) neg = negZero;
-        else neg = false;
-        BigInteger scaled = v.movePointRight(fracDigits).toBigIntegerExact().abs();
-        String digits = scaled.toString();
+    private static String formatSigned(BigDecimal v, int intDigits, int fracDigits, boolean neg) {
+        BigDecimal s = v.setScale(fracDigits, RoundingMode.DOWN);
+        char sign = neg ? '-' : (s.signum() < 0 ? '-' : '+');
+        BigInteger abs = s.abs().movePointRight(fracDigits).toBigIntegerExact();
+        String digits = abs.toString();
         int total = intDigits + fracDigits;
-        if (digits.length() < total) digits = "0".repeat(total - digits.length()) + digits;
-        else if (digits.length() > total) digits = digits.substring(digits.length() - total);
-        return (neg ? "-" : "+") + digits;
-    }
-
-    private static String padRight(String s, int len) {
-        if (s.length() >= len) return s.substring(0, len);
-        return s + " ".repeat(len - s.length());
-    }
-
-    private static BigDecimal parseBalance(String s) {
-        char sc = s.charAt(0);
-        String digs = s.substring(1);
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < digs.length(); i++) {
-            char c = digs.charAt(i);
-            if (c >= '0' && c <= '9') sb.append(c);
-            else if (c == ' ') sb.append('0');
-            else sb.append(c);
+        if (digits.length() < total) {
+            StringBuilder sb = new StringBuilder(total);
+            for (int i = 0; i < total - digits.length(); i++) sb.append('0');
+            sb.append(digits);
+            digits = sb.toString();
+        } else if (digits.length() > total) {
+            digits = digits.substring(digits.length() - total);
         }
-        String d = sb.toString();
-        if (d.isEmpty()) d = "0";
-        BigDecimal iv = new BigDecimal(new BigInteger(d));
-        BigDecimal v = iv.movePointLeft(2).setScale(2);
-        if (sc == '-') v = v.negate();
+        return sign + digits;
+    }
+
+    private static String padRight(String s, int n) {
+        if (s.length() >= n) return s;
+        StringBuilder sb = new StringBuilder(n);
+        sb.append(s);
+        for (int i = s.length(); i < n; i++) sb.append(' ');
+        return sb.toString();
+    }
+
+    private static BigDecimal parseBalance(String f) {
+        if (f == null || f.isEmpty()) return BigDecimal.ZERO;
+        if (f.indexOf('.') >= 0) {
+            String t = f.trim();
+            if (t.isEmpty() || t.equals("+") || t.equals("-")) return BigDecimal.ZERO;
+            try {
+                BigDecimal v = new BigDecimal(t);
+                v = v.setScale(2, RoundingMode.DOWN);
+                return truncStore(v, 9, 2);
+            } catch (NumberFormatException e) {
+                return BigDecimal.ZERO;
+            }
+        }
+        char c0 = f.charAt(0);
+        boolean hasSign = (c0 == '+' || c0 == '-' || c0 == ' ');
+        boolean neg = (c0 == '-');
+        String part = hasSign ? f.substring(1) : f;
+        StringBuilder dg = new StringBuilder();
+        for (int i = 0; i < part.length(); i++) {
+            char c = part.charAt(i);
+            if (c >= '0' && c <= '9') dg.append(c);
+        }
+        if (dg.length() == 0) return BigDecimal.ZERO;
+        BigInteger bi = new BigInteger(dg.toString());
+        BigDecimal v = new BigDecimal(bi, 2);
+        if (neg) v = v.negate();
         return v;
     }
 
-    private static BigDecimal parseRate(String s) {
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            if (c >= '0' && c <= '9') sb.append(c);
-            else if (c == ' ') sb.append('0');
-            else sb.append(c);
+    private static BigDecimal parseRate(String f) {
+        if (f == null) return BigDecimal.ZERO;
+        if (f.indexOf('.') >= 0) {
+            String t = f.trim();
+            if (t.isEmpty()) return BigDecimal.ZERO;
+            try {
+                return new BigDecimal(t);
+            } catch (NumberFormatException e) {
+                return BigDecimal.ZERO;
+            }
         }
-        String d = sb.toString();
-        if (d.isEmpty()) d = "0";
-        BigDecimal iv = new BigDecimal(new BigInteger(d));
-        return iv.movePointLeft(4).setScale(4);
+        String t = f.trim();
+        if (t.isEmpty()) return BigDecimal.ZERO;
+        try {
+            long v = Long.parseLong(t);
+            return BigDecimal.valueOf(v, 4);
+        } catch (NumberFormatException e) {
+            StringBuilder dg = new StringBuilder();
+            for (int i = 0; i < f.length(); i++) {
+                char c = f.charAt(i);
+                if (c >= '0' && c <= '9') dg.append(c);
+            }
+            if (dg.length() == 0) return BigDecimal.ZERO;
+            long v = Long.parseLong(dg.toString());
+            return BigDecimal.valueOf(v, 4);
+        }
     }
 
-    private static int parseDays(String s) {
-        String t = s.trim();
+    private static int parseDays(String f) {
+        if (f == null) return 0;
+        String t = f.trim();
         if (t.isEmpty()) return 0;
-        try { return Integer.parseInt(t); } catch (Exception e) { return 0; }
-    }
-
-    private static void displayLine(String s) throws Exception {
-        System.out.write((s + "\n").getBytes(StandardCharsets.ISO_8859_1));
-        System.out.flush();
+        try {
+            return Integer.parseInt(t);
+        } catch (NumberFormatException e) {
+            StringBuilder dg = new StringBuilder();
+            for (int i = 0; i < f.length(); i++) {
+                char c = f.charAt(i);
+                if (c >= '0' && c <= '9') dg.append(c);
+            }
+            if (dg.length() == 0) return 0;
+            return Integer.parseInt(dg.toString());
+        }
     }
 }
