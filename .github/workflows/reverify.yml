@@ -12,7 +12,8 @@ env:
   # The only legacy repository a certificate may name, and the only Diocle branch a verifier commit may come from.
   LEGACY_REPO: https://github.com/Nivetha200111/quillmark-legacy
   DIOCLE_REPO: https://github.com/Nivetha200111/Diocle
-  DIOCLE_BRANCH: main
+  # Diocle's main history was rewritten; this branch keeps the commit the certificates pin.
+  DIOCLE_BRANCH: verifier-pin-e286cdb
 
 jobs:
   reverify:
