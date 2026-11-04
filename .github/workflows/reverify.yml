@@ -12,8 +12,8 @@ env:
   # The only legacy repository a certificate may name, and the only Diocle branch a verifier commit may come from.
   LEGACY_REPO: https://github.com/Nivetha200111/quillmark-legacy
   DIOCLE_REPO: https://github.com/Nivetha200111/Diocle
-  # Diocle's main history was rewritten; this branch keeps the commit the certificates pin.
-  DIOCLE_BRANCH: verifier-pin-e286cdb
+  # Diocle's main history was rewritten; this tag keeps the commit the certificates pin.
+  DIOCLE_BRANCH: pin-e286cdb
 
 jobs:
   reverify:
@@ -60,7 +60,7 @@ jobs:
           commit=$(python -c "import json,sys; c={json.load(open(p))['verification']['verifier']['commit'] for p in sys.argv[1:]}; assert len(c)==1, c; print(c.pop())" "${certs[@]}")
           [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || { echo "verifier commit is not a full SHA: $commit"; exit 1; }
           git clone -q --filter=blob:none --branch "$DIOCLE_BRANCH" -- "$DIOCLE_REPO" diocle
-          git -C diocle merge-base --is-ancestor "$commit" "origin/$DIOCLE_BRANCH" \
+          git -C diocle merge-base --is-ancestor "$commit" "refs/tags/$DIOCLE_BRANCH" \
             || { echo "verifier commit $commit is not on $DIOCLE_REPO $DIOCLE_BRANCH"; exit 1; }
           git -C diocle checkout -q "$commit"
           pip install -q -e diocle/services/analyzer -e diocle/services/verifier
